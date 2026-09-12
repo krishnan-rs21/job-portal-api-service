@@ -19,7 +19,7 @@ export interface TokenPayload {
  * @returns
  */
 export const generateAccessToken = (payload: TokenPayload) => {
-  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRY });
+  return jwt.sign(payload, ACCESS_SECRET!, { expiresIn: ACCESS_EXPIRY });
 };
 
 /**
@@ -28,7 +28,7 @@ export const generateAccessToken = (payload: TokenPayload) => {
  * @returns
  */
 export const generateRefreshToken = (payload: TokenPayload) => {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
+  return jwt.sign(payload, REFRESH_SECRET!, { expiresIn: REFRESH_EXPIRY });
 };
 
 /**
@@ -38,7 +38,7 @@ export const generateRefreshToken = (payload: TokenPayload) => {
  */
 export const verifyAccessToken = (token: string): TokenPayload | null => {
   try {
-    return jwt.verify(token, ACCESS_SECRET) as TokenPayload;
+    return jwt.verify(token, ACCESS_SECRET!) as TokenPayload;
   } catch {
     return null;
   }
@@ -51,7 +51,7 @@ export const verifyAccessToken = (token: string): TokenPayload | null => {
  */
 export const verifyRefreshToken = (token: string): TokenPayload | null => {
   try {
-    return jwt.verify(token, REFRESH_SECRET) as TokenPayload;
+    return jwt.verify(token, REFRESH_SECRET!) as TokenPayload;
   } catch {
     return null;
   }
