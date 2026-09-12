@@ -8,6 +8,7 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt";
 import redis from "../lib/redis";
+import { sendResponse } from "../utils/responseHelper";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ export const register = async (req: Request, res: Response) => {
 
     // Default role ID lookup (assuming Role table has standard roles)
     const roleRecord = await prisma.role.findUnique({ where: { name: role } });
-    if (!roleRecord) return res.status(400).json({ message: "Invalid role" });
+    if (!roleRecord) return sendResponse(res, 400, false, null, "Invalid role");
 
     const user = await prisma.user.create({
       data: {
@@ -42,9 +43,9 @@ export const register = async (req: Request, res: Response) => {
       select: { uuid: true, email: true, firstName: true, lastName: true },
     });
 
-    res.status(201).json(user);
+    sendResponse(res, 201, true, user, "Registration successful");
   } catch (error) {
-    res.status(400).json({ message: "Registration failed", error });
+    sendResponse(res, 400, false, null, "Registration failed", error as any);
   }
 };
 
@@ -56,7 +57,7 @@ export const login = async (req: Request, res: Response) => {
   });
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message: "Invalid credentials" });
+    return sendResponse(res, 401, false, null, "Invalid credentials");
   }
 
   const payload = { uuid: user.uuid, role: user.role.name };
@@ -65,18 +66,18 @@ export const login = async (req: Request, res: Response) => {
 
   await redis.set(`refresh:${user.uuid}`, refreshToken, "EX", 7 * 24 * 60 * 60);
 
-  res.json({ accessToken, refreshToken });
+  sendResponse(res, 200, true, { accessToken, refreshToken }, "Login successful");
 };
 
 export const refreshToken = async (req: Request, res: Response) => {
   const { token } = req.body;
   const payload = verifyRefreshToken(token);
 
-  if (!payload) return res.status(401).json({ message: "Invalid token" });
+  if (!payload) return sendResponse(res, 401, false, null, "Invalid token");
 
   const storedToken = await redis.get(`refresh:${payload.uuid}`);
   if (storedToken !== token)
-    return res.status(401).json({ message: "Token rotated or invalid" });
+    return sendResponse(res, 401, false, null, "Token rotated or invalid");
 
   const newAccessToken = generateAccessToken({
     uuid: payload.uuid,
@@ -95,11 +96,17 @@ export const refreshToken = async (req: Request, res: Response) => {
     7 * 24 * 60 * 60,
   );
 
-  res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+  sendResponse(
+    res,
+    200,
+    true,
+    { accessToken: newAccessToken, refreshToken: newRefreshToken },
+    "Token refreshed",
+  );
 };
 
 export const logout = async (req: Request, res: Response) => {
   const { uuid } = (req as any).user;
   await redis.del(`refresh:${uuid}`);
-  res.json({ message: "Logged out" });
+  sendResponse(res, 200, true, null, "Logged out");
 };

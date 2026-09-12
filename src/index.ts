@@ -6,6 +6,7 @@ import { rateLimit } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import redis from "./lib/redis";
 import authRoutes from "./routes/auth.route";
+import jobRoutes from "./routes/job.route";
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ const limiter = rateLimit({
 
 app.use("/api/", limiter);
 app.use("/api/auth", authRoutes);
+app.use("/api/jobs", jobRoutes);
 
 // Health Check
 app.get("/health", (req, res) => {
