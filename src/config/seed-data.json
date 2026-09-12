@@ -1,0 +1,11 @@
+{
+  "roles": [{ "name": "ADMIN" }, { "name": "USER" }],
+  "categories": [
+    { "name": "Software Development" },
+    { "name": "Data Science" },
+    { "name": "Design" },
+    { "name": "Marketing" },
+    { "name": "Sales" },
+    { "name": "Customer Support" }
+  ]
+}
