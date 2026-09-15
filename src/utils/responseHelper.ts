@@ -5,6 +5,7 @@ export interface Meta {
   limit?: number;
   total?: number;
   totalPages?: number;
+  statusCounts?: Record<string, number>;
 }
 
 export const sendResponse = <T>(

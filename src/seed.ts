@@ -4,6 +4,8 @@ import { AppDataSource } from "./data-source";
 import { Role } from "./entities/Role";
 import { Category } from "./entities/Category";
 import { User } from "./entities/User";
+import { ExperienceLevel } from "./entities/ExperienceLevel";
+import { EmploymentType } from "./entities/EmploymentType";
 import seedData from "./config/seed-data.json";
 
 async function seed() {
@@ -11,6 +13,8 @@ async function seed() {
   const roleRepository = AppDataSource.getRepository(Role);
   const categoryRepository = AppDataSource.getRepository(Category);
   const userRepository = AppDataSource.getRepository(User);
+  const experienceLevelRepository = AppDataSource.getRepository(ExperienceLevel);
+  const employmentTypeRepository = AppDataSource.getRepository(EmploymentType);
 
   for (const role of seedData.roles) {
     const existing = await roleRepository.findOne({ where: { name: role.name } });
@@ -26,6 +30,28 @@ async function seed() {
     if (!existing) {
       await categoryRepository.save(
         categoryRepository.create({ name: category.name }),
+      );
+    }
+  }
+
+  for (const level of seedData.experienceLevels) {
+    const existing = await experienceLevelRepository.findOne({
+      where: { name: level.name },
+    });
+    if (!existing) {
+      await experienceLevelRepository.save(
+        experienceLevelRepository.create({ name: level.name, sortOrder: level.sortOrder }),
+      );
+    }
+  }
+
+  for (const type of seedData.employmentTypes) {
+    const existing = await employmentTypeRepository.findOne({
+      where: { name: type.name },
+    });
+    if (!existing) {
+      await employmentTypeRepository.save(
+        employmentTypeRepository.create({ name: type.name, sortOrder: type.sortOrder }),
       );
     }
   }

@@ -7,5 +7,16 @@
     { "name": "Marketing" },
     { "name": "Sales" },
     { "name": "Customer Support" }
+  ],
+  "experienceLevels": [
+    { "name": "Entry", "sortOrder": 1 },
+    { "name": "Mid", "sortOrder": 2 },
+    { "name": "Senior", "sortOrder": 3 }
+  ],
+  "employmentTypes": [
+    { "name": "Full-time", "sortOrder": 1 },
+    { "name": "Part-time", "sortOrder": 2 },
+    { "name": "Remote", "sortOrder": 3 },
+    { "name": "Contract", "sortOrder": 4 }
   ]
 }

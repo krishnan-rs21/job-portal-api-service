@@ -67,7 +67,23 @@ export const login = async (req: Request, res: Response) => {
 
   await redis.set(`refresh:${user.uuid}`, refreshToken, "EX", 7 * 24 * 60 * 60);
 
-  sendResponse(res, 200, true, { accessToken, refreshToken }, Messages.LOGIN_SUCCESSFUL);
+  sendResponse(
+    res,
+    200,
+    true,
+    {
+      accessToken,
+      refreshToken,
+      user: {
+        uuid: user.uuid,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role.name,
+      },
+    },
+    Messages.LOGIN_SUCCESSFUL,
+  );
 };
 
 export const refreshToken = async (req: Request, res: Response) => {

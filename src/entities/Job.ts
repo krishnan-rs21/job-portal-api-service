@@ -2,10 +2,14 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { Category } from "./Category";
 import { User } from "./User";
 import { Application } from "./Application";
+import { EmploymentType } from "./EmploymentType";
+import { ExperienceLevel } from "./ExperienceLevel";
 
 @Entity()
 @Index(["uuid"])
 @Index(["categoryId"])
+@Index(["employmentTypeId"])
+@Index(["experienceLevelId"])
 export class Job {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -23,10 +27,18 @@ export class Job {
   location!: string;
 
   @Column()
-  type!: string;
+  employmentTypeId!: number;
+
+  @ManyToOne(() => EmploymentType, (employmentType) => employmentType.jobs, { eager: true })
+  @JoinColumn({ name: "employmentTypeId" })
+  employmentType!: EmploymentType;
 
   @Column()
-  experience!: string;
+  experienceLevelId!: number;
+
+  @ManyToOne(() => ExperienceLevel, (experienceLevel) => experienceLevel.jobs, { eager: true })
+  @JoinColumn({ name: "experienceLevelId" })
+  experienceLevel!: ExperienceLevel;
 
   @Column({ type: "varchar", nullable: true })
   salaryRange!: string | null;
@@ -34,7 +46,7 @@ export class Job {
   @Column()
   categoryId!: number;
 
-  @ManyToOne(() => Category, (category) => category.jobs)
+  @ManyToOne(() => Category, (category) => category.jobs, { eager: true })
   @JoinColumn({ name: "categoryId" })
   category!: Category;
 

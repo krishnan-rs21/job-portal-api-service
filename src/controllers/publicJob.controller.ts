@@ -5,7 +5,9 @@ import { Category } from "../entities/Category";
 import { sendResponse } from "../utils/responseHelper";
 import redis from "../lib/redis";
 import { Messages } from "../config/messages";
-import { Like } from "typeorm";
+import { ILike } from "typeorm";
+import { isUuid, resolveJobFilters } from "../utils/lookups";
+import { toJobResponse } from "../utils/serializers";
 
 const jobRepository = AppDataSource.getRepository(Job);
 const categoryRepository = AppDataSource.getRepository(Category);
@@ -25,15 +27,27 @@ export const getLandingData = async (req: Request, res: Response) => {
   try {
     const featuredJobs = await jobRepository.find({
       where: { isActive: true },
+      order: { createdAt: "DESC" },
       take: 5,
     });
-    const categoryCounts = await categoryRepository.find({
-      relations: { jobs: true },
-      // TypeORM doesn't have a direct equivalent to `_count` easily available here,
-      // simplifying to return categories, the client can handle count if needed.
-    });
+    const categoryRows: { uuid: string; name: string; jobCount: string }[] = await categoryRepository
+      .createQueryBuilder("category")
+      .leftJoin("category.jobs", "job", "job.isActive = :isActive", { isActive: true })
+      .select("category.uuid", "uuid")
+      .addSelect("category.name", "name")
+      .addSelect("COUNT(job.id)", "jobCount")
+      .groupBy("category.id")
+      .orderBy("category.id", "ASC")
+      .getRawMany();
 
-    const data = { featuredJobs, categoryCounts };
+    const data = {
+      featuredJobs: featuredJobs.map((job) => toJobResponse(job)),
+      categoryCounts: categoryRows.map((row) => ({
+        uuid: row.uuid,
+        name: row.name,
+        jobCount: Number(row.jobCount),
+      })),
+    };
     await redis.set(cacheKey, JSON.stringify(data), "EX", 3600);
     sendResponse(res, 200, true, data, Messages.LANDING_DATA_FETCHED);
   } catch (error) {
@@ -53,37 +67,46 @@ export const listJobs = async (req: Request, res: Response) => {
     page = "1",
     limit = "10",
     search,
-    categoryId,
-    experience,
   } = req.query;
   const cacheKey = `jobs:list:${JSON.stringify(req.query)}`;
   const cached = await redis.get(cacheKey);
-  if (cached)
+  if (cached) {
+    const cachedData = JSON.parse(cached);
     return sendResponse(
       res,
       200,
       true,
-      JSON.parse(cached),
+      cachedData.jobs,
       Messages.FETCHED_FROM_CACHE,
+      cachedData.meta,
     );
+  }
 
   try {
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
-    
-    const where: any = { isActive: true };
+
+    const lookupWhere = await resolveJobFilters(req.query);
+    if (!lookupWhere) {
+      return sendResponse(res, 200, true, [], Messages.JOBS_FETCHED, {
+        page: pageNum,
+        limit: limitNum,
+        total: 0,
+        totalPages: 0,
+      });
+    }
+
+    const where: any = { ...lookupWhere, isActive: true };
     if (search)
-      where.title = Like(`%${search}%`);
-    if (categoryId) where.categoryId = parseInt(categoryId as string);
-    if (experience) where.experience = experience as string;
+      where.title = ILike(`%${search}%`);
 
     const [jobs, total] = await jobRepository.findAndCount({
-        where, skip, take: limitNum
+        where, skip, take: limitNum, order: { createdAt: "DESC" }
     });
 
     const data = {
-      jobs,
+      jobs: jobs.map((job) => toJobResponse(job)),
       meta: {
         page: pageNum,
         limit: limitNum,
@@ -100,6 +123,7 @@ export const listJobs = async (req: Request, res: Response) => {
 
 export const getJobByUuid = async (req: Request, res: Response) => {
   const uuid = String(req.params.uuid);
+  if (!isUuid(uuid)) return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
   const cacheKey = `jobs:${uuid}`;
   const cached = await redis.get(cacheKey);
   if (cached)
@@ -116,8 +140,9 @@ export const getJobByUuid = async (req: Request, res: Response) => {
     if (!job)
       return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
 
-    await redis.set(cacheKey, JSON.stringify(job), "EX", 3600);
-    sendResponse(res, 200, true, job, Messages.JOB_FETCHED);
+    const data = toJobResponse(job);
+    await redis.set(cacheKey, JSON.stringify(data), "EX", 3600);
+    sendResponse(res, 200, true, data, Messages.JOB_FETCHED);
   } catch (error) {
     sendResponse(res, 500, false, null, Messages.FAILED_TO_FETCH_JOB, error as any);
   }

@@ -24,7 +24,7 @@ async function bootstrap() {
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      limit: 100,
+      limit: Number(process.env.RATE_LIMIT_MAX) || 100,
       standardHeaders: "draft-8",
       legacyHeaders: false,
       store: new RedisStore({
