@@ -1,9 +1,14 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { AppDataSource } from "../data-source";
+import { Job } from "../entities/Job";
+import { Category } from "../entities/Category";
 import { sendResponse } from "../utils/responseHelper";
 import redis from "../lib/redis";
+import { Messages } from "../config/messages";
+import { Like } from "typeorm";
 
-const prisma = new PrismaClient();
+const jobRepository = AppDataSource.getRepository(Job);
+const categoryRepository = AppDataSource.getRepository(Category);
 
 export const getLandingData = async (req: Request, res: Response) => {
   const cacheKey = "jobs:landing";
@@ -14,28 +19,30 @@ export const getLandingData = async (req: Request, res: Response) => {
       200,
       true,
       JSON.parse(cached),
-      "Fetched from cache",
+      Messages.FETCHED_FROM_CACHE,
     );
 
   try {
-    const featuredJobs = await prisma.job.findMany({
+    const featuredJobs = await jobRepository.find({
       where: { isActive: true },
       take: 5,
     });
-    const categoryCounts = await prisma.category.findMany({
-      include: { _count: { select: { jobs: { where: { isActive: true } } } } },
+    const categoryCounts = await categoryRepository.find({
+      relations: { jobs: true },
+      // TypeORM doesn't have a direct equivalent to `_count` easily available here,
+      // simplifying to return categories, the client can handle count if needed.
     });
 
     const data = { featuredJobs, categoryCounts };
     await redis.set(cacheKey, JSON.stringify(data), "EX", 3600);
-    sendResponse(res, 200, true, data, "Landing data fetched");
+    sendResponse(res, 200, true, data, Messages.LANDING_DATA_FETCHED);
   } catch (error) {
     sendResponse(
       res,
       500,
       false,
       null,
-      "Failed to fetch landing data",
+      Messages.FAILED_TO_FETCH_LANDING_DATA,
       error as any,
     );
   }
@@ -57,40 +64,42 @@ export const listJobs = async (req: Request, res: Response) => {
       200,
       true,
       JSON.parse(cached),
-      "Fetched from cache",
+      Messages.FETCHED_FROM_CACHE,
     );
 
   try {
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
+    
     const where: any = { isActive: true };
     if (search)
-      where.title = { contains: search as string, mode: "insensitive" };
+      where.title = Like(`%${search}%`);
     if (categoryId) where.categoryId = parseInt(categoryId as string);
     if (experience) where.experience = experience as string;
 
-    const [jobs, total] = await Promise.all([
-      prisma.job.findMany({ where, skip, take: parseInt(limit as string) }),
-      prisma.job.count({ where }),
-    ]);
+    const [jobs, total] = await jobRepository.findAndCount({
+        where, skip, take: limitNum
+    });
 
     const data = {
       jobs,
       meta: {
-        page: parseInt(page as string),
-        limit: parseInt(limit as string),
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / parseInt(limit as string)),
+        totalPages: Math.ceil(total / limitNum),
       },
     };
     await redis.set(cacheKey, JSON.stringify(data), "EX", 600);
-    sendResponse(res, 200, true, data.jobs, "Jobs fetched", data.meta);
+    sendResponse(res, 200, true, data.jobs, Messages.JOBS_FETCHED, data.meta);
   } catch (error) {
-    sendResponse(res, 500, false, null, "Failed to fetch jobs", error as any);
+    sendResponse(res, 500, false, null, Messages.FAILED_TO_FETCH_JOBS, error as any);
   }
 };
 
 export const getJobByUuid = async (req: Request, res: Response) => {
-  const { uuid } = req.params;
+  const uuid = String(req.params.uuid);
   const cacheKey = `jobs:${uuid}`;
   const cached = await redis.get(cacheKey);
   if (cached)
@@ -99,17 +108,17 @@ export const getJobByUuid = async (req: Request, res: Response) => {
       200,
       true,
       JSON.parse(cached),
-      "Fetched from cache",
+      Messages.FETCHED_FROM_CACHE,
     );
 
   try {
-    const job = await prisma.job.findUnique({ where: { uuid } });
-    if (!job || !job.isActive)
-      return sendResponse(res, 404, false, null, "Job not found");
+    const job = await jobRepository.findOne({ where: { uuid, isActive: true } });
+    if (!job)
+      return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
 
     await redis.set(cacheKey, JSON.stringify(job), "EX", 3600);
-    sendResponse(res, 200, true, job, "Job fetched");
+    sendResponse(res, 200, true, job, Messages.JOB_FETCHED);
   } catch (error) {
-    sendResponse(res, 500, false, null, "Failed to fetch job", error as any);
+    sendResponse(res, 500, false, null, Messages.FAILED_TO_FETCH_JOB, error as any);
   }
 };

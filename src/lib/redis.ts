@@ -5,7 +5,7 @@ dotenv.config();
 
 const redisUrl = process.env.REDIS_URL;
 
-const redis = new Redis(redisUrl, {
+const redis = new Redis(redisUrl || "redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
 

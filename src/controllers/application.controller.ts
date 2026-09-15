@@ -1,53 +1,58 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { AppDataSource } from "../data-source";
+import { Application } from "../entities/Application";
+import { Job } from "../entities/Job";
+import { User } from "../entities/User";
 import { sendResponse } from "../utils/responseHelper";
+import { Messages } from "../config/messages";
 
-const prisma = new PrismaClient();
+const applicationRepository = AppDataSource.getRepository(Application);
+const jobRepository = AppDataSource.getRepository(Job);
+const userRepository = AppDataSource.getRepository(User);
 
 export const applyForJob = async (req: Request, res: Response) => {
-  const { uuid: jobUuid } = req.params;
+  const jobUuid = String(req.params.uuid);
   const { uuid: userUuid } = (req as any).user;
 
   try {
     const [job, user] = await Promise.all([
-      prisma.job.findUnique({ where: { uuid: jobUuid } }),
-      prisma.user.findUnique({ where: { uuid: userUuid } }),
+      jobRepository.findOne({ where: { uuid: jobUuid } }),
+      userRepository.findOne({ where: { uuid: userUuid } }),
     ]);
 
     if (!job || !user)
-      return sendResponse(res, 404, false, null, "Job or User not found");
+      return sendResponse(res, 404, false, null, Messages.JOB_OR_USER_NOT_FOUND);
 
-    const application = await prisma.application.create({
-      data: { jobId: job.id, userId: user.id },
-    });
+    const application = applicationRepository.create({ jobId: job.id, userId: user.id });
+    await applicationRepository.save(application);
 
-    sendResponse(res, 201, true, application, "Application submitted");
+    sendResponse(res, 201, true, application, Messages.APPLICATION_SUBMITTED);
   } catch (error: any) {
-    if (error.code === "P2002")
-      return sendResponse(res, 400, false, null, "Already applied");
-    sendResponse(res, 500, false, null, "Application failed", error as any);
+    if (error.code === "23505") // Postgres unique violation
+      return sendResponse(res, 400, false, null, Messages.ALREADY_APPLIED);
+    sendResponse(res, 500, false, null, Messages.APPLICATION_FAILED, error as any);
   }
 };
 
 export const getMyApplications = async (req: Request, res: Response) => {
   const { uuid: userUuid } = (req as any).user;
   try {
-    const user = await prisma.user.findUnique({ where: { uuid: userUuid } });
-    if (!user) return sendResponse(res, 404, false, null, "User not found");
+    const user = await userRepository.findOne({ where: { uuid: userUuid } });
+    if (!user) return sendResponse(res, 404, false, null, Messages.USER_NOT_FOUND);
 
-    const applications = await prisma.application.findMany({
+    const applications = await applicationRepository.find({
       where: { userId: user.id },
-      include: { job: { select: { title: true, uuid: true } } },
+      relations: { job: true },
     });
 
-    sendResponse(res, 200, true, applications, "Applications fetched");
+    sendResponse(res, 200, true, applications, Messages.APPLICATIONS_FETCHED);
   } catch (error) {
     sendResponse(
       res,
       500,
       false,
       null,
-      "Failed to fetch applications",
+      Messages.FAILED_TO_FETCH_APPLICATIONS,
       error as any,
     );
   }

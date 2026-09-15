@@ -1,14 +1,18 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { AppDataSource } from "../data-source";
+import { Category } from "../entities/Category";
+import { Role } from "../entities/Role";
 import { sendResponse } from "../utils/responseHelper";
+import { Messages } from "../config/messages";
 
-const prisma = new PrismaClient();
+const categoryRepository = AppDataSource.getRepository(Category);
+const roleRepository = AppDataSource.getRepository(Role);
 
 export const getMetadata = async (req: Request, res: Response) => {
   try {
     const [categories, roles] = await Promise.all([
-      prisma.category.findMany({ select: { name: true } }),
-      prisma.role.findMany({ select: { name: true } }),
+      categoryRepository.find({ select: { name: true } }),
+      roleRepository.find({ select: { name: true } }),
     ]);
 
     sendResponse(
@@ -21,7 +25,7 @@ export const getMetadata = async (req: Request, res: Response) => {
         experienceLevels: ["Entry", "Mid", "Senior"],
         employmentTypes: ["Full-time", "Part-time", "Remote", "Contract"],
       },
-      "Metadata fetched successfully",
+      Messages.METADATA_FETCHED,
     );
   } catch (error) {
     sendResponse(
@@ -29,7 +33,7 @@ export const getMetadata = async (req: Request, res: Response) => {
       500,
       false,
       null,
-      "Failed to fetch metadata",
+      Messages.FAILED_TO_FETCH_METADATA,
       error as any,
     );
   }

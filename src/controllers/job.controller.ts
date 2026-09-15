@@ -1,10 +1,15 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { AppDataSource } from "../data-source";
+import { Job } from "../entities/Job";
+import { User } from "../entities/User";
 import { z } from "zod";
 import { sendResponse } from "../utils/responseHelper";
 import redis from "../lib/redis";
+import { Messages } from "../config/messages";
+import { Like, FindManyOptions } from "typeorm";
 
-const prisma = new PrismaClient();
+const jobRepository = AppDataSource.getRepository(Job);
+const userRepository = AppDataSource.getRepository(User);
 
 const createJobSchema = z.object({
   title: z.string(),
@@ -25,75 +30,81 @@ const invalidateJobCache = async () => {
 export const createJob = async (req: Request, res: Response) => {
   try {
     const data = createJobSchema.parse(req.body);
-    const postedById = (req as any).user.uuid; // This would need a lookup to get ID
+    const postedByUuid = (req as any).user.uuid;
     
-    // Quick fix: Assuming user uuid is passed, but schema needs user id.
-    // For now, lookup user by uuid to get internal id.
-    const user = await prisma.user.findUnique({ where: { uuid: postedById } });
-    if(!user) return sendResponse(res, 404, false, null, "User not found");
+    const user = await userRepository.findOne({ where: { uuid: postedByUuid } });
+    if(!user) return sendResponse(res, 404, false, null, Messages.USER_NOT_FOUND);
 
-    const job = await prisma.job.create({
-      data: { ...data, postedById: user.id },
-    });
+    const job = jobRepository.create({ ...data, postedById: user.id });
+    await jobRepository.save(job);
 
     await invalidateJobCache();
-    sendResponse(res, 201, true, job, "Job created successfully");
+    sendResponse(res, 201, true, job, Messages.JOB_CREATED_SUCCESSFULLY);
   } catch (error) {
-    sendResponse(res, 400, false, null, "Job creation failed", error as any);
+    sendResponse(res, 400, false, null, Messages.JOB_CREATION_FAILED, error as any);
   }
 };
 
 export const listJobs = async (req: Request, res: Response) => {
   const { page = "1", limit = "10", search, categoryId, experience } = req.query;
-  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+  const pageNum = parseInt(page as string);
+  const limitNum = parseInt(limit as string);
+  const skip = (pageNum - 1) * limitNum;
 
   const where: any = {};
-  if (search) where.title = { contains: search as string, mode: "insensitive" };
+  if (search) where.title = Like(`%${search}%`);
   if (categoryId) where.categoryId = parseInt(categoryId as string);
   if (experience) where.experience = experience as string;
 
-  const [jobs, total] = await Promise.all([
-    prisma.job.findMany({ where, skip, take: parseInt(limit as string) }),
-    prisma.job.count({ where }),
-  ]);
+  const [jobs, total] = await jobRepository.findAndCount({
+    where,
+    skip,
+    take: limitNum,
+  });
 
-  sendResponse(res, 200, true, jobs, "Jobs fetched", {
-    page: parseInt(page as string),
-    limit: parseInt(limit as string),
+  sendResponse(res, 200, true, jobs, Messages.JOBS_FETCHED, {
+    page: pageNum,
+    limit: limitNum,
     total,
-    totalPages: Math.ceil(total / parseInt(limit as string)),
+    totalPages: Math.ceil(total / limitNum),
   });
 };
 
 export const updateJob = async (req: Request, res: Response) => {
-    const { uuid } = req.params;
+    const uuid = String(req.params.uuid);
     try {
         const data = createJobSchema.partial().parse(req.body);
-        const job = await prisma.job.update({
-            where: { uuid },
-            data
-        });
+        const job = await jobRepository.findOne({ where: { uuid } });
+        if (!job) return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
+        
+        Object.assign(job, data);
+        await jobRepository.save(job);
+        
         await invalidateJobCache();
-        sendResponse(res, 200, true, job, "Job updated");
+        sendResponse(res, 200, true, job, Messages.JOB_UPDATED);
     } catch (error) {
-        sendResponse(res, 400, false, null, "Update failed", error as any);
+        sendResponse(res, 400, false, null, Messages.UPDATE_FAILED, error as any);
     }
 }
 
 export const toggleJobStatus = async (req: Request, res: Response) => {
-    const { uuid } = req.params;
+    const uuid = String(req.params.uuid);
     const { isActive } = req.body;
-    const job = await prisma.job.update({
-        where: { uuid },
-        data: { isActive }
-    });
+    const job = await jobRepository.findOne({ where: { uuid } });
+    if (!job) return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
+    
+    job.isActive = isActive;
+    await jobRepository.save(job);
+    
     await invalidateJobCache();
-    sendResponse(res, 200, true, job, "Job status updated");
+    sendResponse(res, 200, true, job, Messages.JOB_STATUS_UPDATED);
 }
 
 export const deleteJob = async (req: Request, res: Response) => {
-    const { uuid } = req.params;
-    await prisma.job.delete({ where: { uuid } });
+    const uuid = String(req.params.uuid);
+    const result = await jobRepository.delete({ uuid });
+    if (result.affected === 0) return sendResponse(res, 404, false, null, Messages.JOB_NOT_FOUND);
+    
     await invalidateJobCache();
-    sendResponse(res, 200, true, null, "Job deleted");
+    sendResponse(res, 200, true, null, Messages.JOB_DELETED);
 }

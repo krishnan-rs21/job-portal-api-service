@@ -3,10 +3,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
-const ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY;
-const REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY;
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "dev-access-secret-change-me";
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "dev-refresh-secret-change-me";
+const ACCESS_EXPIRY = (process.env.JWT_ACCESS_EXPIRY || "15m") as jwt.SignOptions["expiresIn"];
+const REFRESH_EXPIRY = (process.env.JWT_REFRESH_EXPIRY || "7d") as jwt.SignOptions["expiresIn"];
 
 export interface TokenPayload {
   uuid: string;
